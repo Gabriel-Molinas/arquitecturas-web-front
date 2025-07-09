@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./assets/css/styles.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="app">
+        <!-- Content will be dynamically loaded here -->
+    </div>
+
+    <script>
+        // Authentication Service
+        class AuthService {
+            constructor() {
+                this.API_URL = '/api';
+            }
+
+            async login(credentials) {
+                try {
+                    const response = await fetch(`${this.API_URL}/iam/login`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(credentials),
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 403) {
+                            throw new Error('Credenciales inválidas');
+                        }
+                        throw new Error('Error de conexión');
+                    }
+
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error('Login error:', error);
+                    throw error;
+                }
+            }
+
+            async register(credentials) {
+                try {
+                    const response = await fetch(`${this.API_URL}/iam/registro`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(credentials),
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 412) {
+                            throw new Error('El usuario ya existe');
+                        }
+                        if (response.status === 422) {
+                            throw new Error('Error al crear el usuario');
+                        }
+                        throw new Error('Error de conexión');
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('Registration error:', error);
+                    throw error;
+                }
+            }
+
+            async refreshToken() {
+                try {
+                    const refreshToken = this.getRefreshToken();
+                    if (!refreshToken) {
+                        throw new Error('No refresh token available');
+                    }
+
+                    const response = await fetch(`${this.API_URL}/iam/refresh`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ refresh: refreshToken }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Token refresh failed');
+                    }
+
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error('Token refresh error:', error);
+                    this.logout();
+                    throw error;
+                }
+            }
+
+            logout() {
+                localStorage.removeItem('token');
+                localStorage.removeItem('refreshToken');
+                router.navigate('login');
+            }
+
+            getToken() {
+                return localStorage.getItem('token');
+            }
+
+            setToken(token) {
+                localStorage.setItem('token', token);
+            }
+
+            getRefreshToken() {
+                return localStorage.getItem('refreshToken');
+            }
+
+            setRefreshToken(refreshToken) {
+                localStorage.setItem('refreshToken', refreshToken);
+            }
+
+            isAuthenticated() {
+                return !!this.getToken();
+            }
+
+            // Decode JWT token to get user info
+            getCurrentUser() {
+                const token = this.getToken();
+                if (!token) return null;
+                
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    return {
+                        id: payload.userId || payload.sub,
+                        email: payload.email,
+                        name: payload.name || payload.email
+                    };
+                } catch (error) {
+                    console.error('Error decoding token:', error);
+                    return null;
+                }
+            }
+        }
+
+        // API Service
+        class ApiService {
+            constructor() {
+                this.API_URL = '/api';
+            }
+
+            async request(url, options = {}) {
+                let token = authService.getToken();
+                
+                const defaultHeaders = {
+                    'Content-Type': 'application/json',
+                    ...(token && { Authorization: `Bearer ${token}` }),
+                };
+
+                try {
+                    let response = await fetch(`${this.API_URL}${url}`, {
+                        ...options,
+                        headers: {
+                            ...defaultHeaders,
+                            ...options.headers,
+                        },
+                    });
+
+                    // Handle token expiration
+                    if (response.status === 401 && authService.getRefreshToken()) {
+                        try {
+                            const refreshData = await authService.refreshToken();
+                            authService.setToken(refreshData.token);
+                            if (refreshData.refreshToken) {
+                                authService.setRefreshToken(refreshData.refreshToken);
+                            }
+                            
+                            // Retry the original request
+                            response = await fetch(`${this.API_URL}${url}`, {
+                                ...options,
+                                headers: {
+                                    ...defaultHeaders,
+                                    Authorization: `Bearer ${refreshData.token}`,
+                                    ...options.headers,
+                                },
+                            });
+                        } catch (refreshError) {
+                            authService.logout();
+                            return;
+                        }
+                    }
+
+                    if (response.status === 401) {
+                        authService.logout();
+                        return;
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    // Handle no content responses
+                    if (response.status === 204) {
+                        return null;
+                    }
+
+                    return await response.json();
+                } catch (error) {
+                    console.error('API request error:', error);
+                    throw error;
+                }
+            }
+
+            // Books API
+            async getBooks() {
+                return await this.request('/books');
+            }
+
+            async createBook(book) {
+                return await this.request('/books', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        nombre: book.nombre,
+                        descripcion: book.descripcion
+                    }),
+                });
+            }
+
+            async updateBook(id, book) {
+                return await this.request(`/books/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        nombre: book.nombre,
+                        descripcion: book.descripcion
+                    }),
+                });
+            }
+
+            async deleteBook(id) {
+                return await this.request(`/books/${id}`, {
+                    method: 'DELETE',
+                });
+            }
+        }
+
+        // Simple Router
+        class SimpleRouter {
+            constructor() {
+                this.routes = {
+                    login: () => this.renderLogin(),
+                    dashboard: () => this.renderDashboard(),
+                    books: () => this.renderBooks()
+                };
+                this.init();
+            }
+
+            init() {
+                window.addEventListener('hashchange', () => this.handleRoute());
+                this.handleRoute();
+            }
+
+            handleRoute() {
+                const hash = window.location.hash.slice(1) || 'login';
+                
+                if (hash !== 'login' && !authService.isAuthenticated()) {
+                    this.navigate('login');
+                    return;
+                }
+
+                if (hash === 'login' && authService.isAuthenticated()) {
+                    this.navigate('dashboard');
+                    return;
+                }
+
+                const handler = this.routes[hash];
+                if (handler) {
+                    handler();
+                } else {
+                    this.navigate(authService.isAuthenticated() ? 'dashboard' : 'login');
+                }
+            }
+
+            navigate(route) {
+                window.location.hash = route;
+            }
+
+            // Layout component
+            createLayout(content) {
+                const user = authService.getCurrentUser();
+                return `
+                    <div class="min-h-screen bg-gray-100">
+                        <nav class="bg-white shadow-lg">
+                            <div class="max-w-7xl mx-auto px-4">
+                                <div class="flex justify-between h-16">
+                                    <div class="flex items-center">
+                                        <h1 class="text-xl font-semibold text-gray-900">Sistema de Gestión</h1>
+                                    </div>
+                                    <div class="flex items-center space-x-4">
+                                        <span class="text-sm text-gray-600">Bienvenido, ${user?.email || 'Usuario'}</span>
+                                        <button onclick="authService.logout()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                            Logout
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </nav>
+                        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                            ${content}
+                        </main>
+                    </div>
+                `;
+            }
+
+            // Login Page
+            renderLogin() {
+                document.getElementById('app').innerHTML = `
+                    <div class="min-h-screen flex items-center justify-center bg-gray-50 fade-in">
+                        <div class="max-w-md w-full space-y-8">
+                            <div>
+                                <div class="mx-auto h-12 w-12 flex items-center justify-center bg-blue-100 rounded-full">
+                                    <svg class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                </div>
+                                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900" id="form-title">Login</h2>
+                            </div>
+                            
+                            <form class="mt-8 space-y-6" id="auth-form">
+                                <div class="rounded-md shadow-sm -space-y-px">
+                                    <div id="nombre-field" class="hidden">
+                                        <label for="nombre" class="sr-only">Nombre</label>
+                                        <input id="nombre" name="nombre" type="text" class="relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Nombre completo" />
+                                    </div>
+                                    <div>
+                                        <label for="email" class="sr-only">Email</label>
+                                        <input id="email" name="email" type="email" required class="relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Email" />
+                                    </div>
+                                    <div>
+                                        <label for="password" class="sr-only">Password</label>
+                                        <input id="password" name="password" type="password" required class="relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Contraseña" />
+                                    </div>
+                                </div>
+
+                                <div id="error-message" class="text-red-600 text-sm hidden"></div>
+                                <div id="success-message" class="text-green-600 text-sm hidden"></div>
+
+                                <div>
+                                    <button type="submit" id="submit-btn" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                        Login
+                                    </button>
+                                </div>
+
+                                <div class="text-center">
+                                    <button type="button" id="toggle-form" class="text-blue-600 hover:text-blue-500">
+                                        ¿No tienes cuenta? Regístrate
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+
+                this.setupLoginForm();
+            }
+
+            setupLoginForm() {
+                const form = document.getElementById('auth-form');
+                const toggleBtn = document.getElementById('toggle-form');
+                const formTitle = document.getElementById('form-title');
+                const submitBtn = document.getElementById('submit-btn');
+                const nombreField = document.getElementById('nombre-field');
+                const emailInput = document.getElementById('email');
+                const errorMessage = document.getElementById('error-message');
+                const successMessage = document.getElementById('success-message');
+                
+                let isRegisterMode = false;
+
+                toggleBtn.addEventListener('click', () => {
+                    isRegisterMode = !isRegisterMode;
+                    
+                    if (isRegisterMode) {
+                        formTitle.textContent = 'Registro';
+                        submitBtn.textContent = 'Registrarse';
+                        toggleBtn.textContent = '¿Ya tienes cuenta? Inicia sesión';
+                        nombreField.classList.remove('hidden');
+                        nombreField.querySelector('input').required = true;
+                        emailInput.classList.remove('rounded-t-md');
+                    } else {
+                        formTitle.textContent = 'Login';
+                        submitBtn.textContent = 'Login';
+                        toggleBtn.textContent = '¿No tienes cuenta? Regístrate';
+                        nombreField.classList.add('hidden');
+                        nombreField.querySelector('input').required = false;
+                        emailInput.classList.add('rounded-t-md');
+                    }
+                    
+                    form.reset();
+                    this.hideMessage();
+                });
+
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(form);
+                    const data = Object.fromEntries(formData);
+                    
+                    try {
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Procesando...';
+                        this.hideMessage();
+                        
+                        if (isRegisterMode) {
+                            await authService.register(data);
+                            this.showMessage('Cuenta creada exitosamente. Ahora puedes iniciar sesión.', 'success');
+                            toggleBtn.click();
+                        } else {
+                            const response = await authService.login(data);
+                            if (response.token) {
+                                authService.setToken(response.token);
+                                if (response.refreshToken) {
+                                    authService.setRefreshToken(response.refreshToken);
+                                }
+                                this.navigate('dashboard');
+                            }
+                        }
+                    } catch (error) {
+                        this.showMessage(error.message, 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = isRegisterMode ? 'Registrarse' : 'Login';
+                    }
+                });
+            }
+
+            showMessage(message, type) {
+                const errorDiv = document.getElementById('error-message');
+                const successDiv = document.getElementById('success-message');
+                
+                if (type === 'error') {
+                    errorDiv.textContent = message;
+                    errorDiv.classList.remove('hidden');
+                    successDiv.classList.add('hidden');
+                } else {
+                    successDiv.textContent = message;
+                    successDiv.classList.remove('hidden');
+                    errorDiv.classList.add('hidden');
+                }
+            }
+
+            hideMessage() {
+                document.getElementById('error-message').classList.add('hidden');
+                document.getElementById('success-message').classList.add('hidden');
+            }
+
+            // Dashboard Page
+            renderDashboard() {
+                const content = `
+                    <div class="px-4 py-8 fade-in">
+                        <div class="max-w-4xl mx-auto">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-8">Pantalla Principal</h1>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-white rounded-lg shadow-md p-6">
+                                    <h2 class="text-xl font-semibold text-gray-900 mb-4">Gestión de Libros</h2>
+                                    <p class="text-gray-600 mb-4">Administra tus libros personales</p>
+                                    <button onclick="router.navigate('books')" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                        Ver Libros
+                                    </button>
+                                </div>
+
+                                <div class="bg-white rounded-lg shadow-md p-6">
+                                    <h2 class="text-xl font-semibold text-gray-900 mb-4">Funcionalidades Futuras</h2>
+                                    <p class="text-gray-600 mb-4">Próximamente más funcionalidades</p>
+                                    <button disabled class="bg-gray-400 text-white px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed">
+                                        Próximamente
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <p class="text-blue-800 text-sm">
+                                    <strong>Nota:</strong> Esta aplicación utiliza la API real de arquitecturas-web-api. Los libros se almacenan en la base de datos y están asociados a tu usuario.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('app').innerHTML = this.createLayout(content);
+            }
+
+            // Books Page
+            renderBooks() {
+                const content = `
+                    <div class="px-4 py-8 fade-in">
+                        <div class="max-w-6xl mx-auto">
+                            <div class="flex justify-between items-center mb-8">
+                                <h1 class="text-3xl font-bold text-gray-900">Mis Libros</h1>
+                                <button onclick="router.showBookForm()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                    Agregar Libro
+                                </button>
+                            </div>
+
+                            <div id="book-form" class="hidden mb-8">
+                                <div class="bg-white rounded-lg shadow-md p-6">
+                                    <h2 class="text-lg font-semibold text-gray-900 mb-4" id="form-title">Agregar Nuevo Libro</h2>
+                                    
+                                    <form id="book-form-element" class="space-y-4">
+                                        <div>
+                                            <label for="book-name" class="block text-sm font-medium text-gray-700 mb-1">Nombre del Libro</label>
+                                            <input type="text" id="book-name" name="nombre" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        </div>
+                                        
+                                        <div>
+                                            <label for="book-description" class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                                            <textarea id="book-description" name="descripcion" rows="3" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                                        </div>
+
+                                        <div class="flex justify-end space-x-4">
+                                            <button type="button" onclick="router.hideBookForm()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                                Cancelar
+                                            </button>
+                                            <button type="submit" id="book-submit-btn" class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                                                Guardar
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+
+                            <div id="books-container">
+                                <div class="flex justify-center items-center h-32">
+                                    <div class="spinner"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('app').innerHTML = this.createLayout(content);
+                this.loadBooks();
+                this.setupBookForm();
+            }
+
+            async loadBooks() {
+                try {
+                    const books = await apiService.getBooks();
+                    this.renderBooksList(books);
+                } catch (error) {
+                    console.error('Error loading books:', error);
+                    document.getElementById('books-container').innerHTML = `
+                        <div class="text-center text-red-600 py-8">
+                            <p>Error al cargar los libros</p>
+                            <button onclick="router.loadBooks()" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                                Reintentar
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+
+            renderBooksList(books) {
+                const container = document.getElementById('books-container');
+                
+                if (books.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-8">
+                            <p class="text-gray-500 mb-4">No tienes libros aún</p>
+                            <button onclick="router.showBookForm()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                Agregar tu primer libro
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${books.map(book => `
+                            <div class="bg-white rounded-lg shadow-md p-6">
+                                <h3 class="text-lg font-semibold text-gray-900 mb-2">${book.name}</h3>
+                                <p class="text-gray-600 mb-4">${book.description}</p>
+                                <div class="flex justify-end space-x-2">
+                                    <button onclick="router.editBook(${book.id})" class="text-blue-600 hover:text-blue-800 text-sm">
+                                        Editar
+                                    </button>
+                                    <button onclick="router.deleteBook(${book.id})" class="text-red-600 hover:text-red-800 text-sm">
+                                        Eliminar
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            setupBookForm() {
+                const form = document.getElementById('book-form-element');
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(form);
+                    const data = Object.fromEntries(formData);
+                    const submitBtn = document.getElementById('book-submit-btn');
+                    
+                    try {
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = 'Guardando...';
+                        
+                        if (this.editingBookId) {
+                            await apiService.updateBook(this.editingBookId, data);
+                            this.showNotification('Libro actualizado exitosamente', 'success');
+                        } else {
+                            await apiService.createBook(data);
+                            this.showNotification('Libro creado exitosamente', 'success');
+                        }
+                        
+                        this.hideBookForm();
+                        this.loadBooks();
+                    } catch (error) {
+                        console.error('Error saving book:', error);
+                        this.showNotification('Error al guardar el libro', 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Guardar';
+                    }
+                });
+            }
+
+            showBookForm() {
+                this.editingBookId = null;
+                document.getElementById('form-title').textContent = 'Agregar Nuevo Libro';
+                document.getElementById('book-form').classList.remove('hidden');
+                document.getElementById('book-form-element').reset();
+            }
+
+            hideBookForm() {
+                document.getElementById('book-form').classList.add('hidden');
+                this.editingBookId = null;
+            }
+
+            async editBook(bookId) {
+                try {
+                    const books = await apiService.getBooks();
+                    const book = books.find(b => b.id === bookId);
+                    
+                    if (book) {
+                        this.editingBookId = bookId;
+                        document.getElementById('form-title').textContent = 'Editar Libro';
+                        document.getElementById('book-name').value = book.name;
+                        document.getElementById('book-description').value = book.description;
+                        document.getElementById('book-form').classList.remove('hidden');
+                    }
+                } catch (error) {
+                    console.error('Error loading book for edit:', error);
+                    this.showNotification('Error al cargar el libro', 'error');
+                }
+            }
+
+            async deleteBook(bookId) {
+                if (confirm('¿Estás seguro de que quieres eliminar este libro?')) {
+                    try {
+                        await apiService.deleteBook(bookId);
+                        this.showNotification('Libro eliminado exitosamente', 'success');
+                        this.loadBooks();
+                    } catch (error) {
+                        console.error('Error deleting book:', error);
+                        this.showNotification('Error al eliminar el libro', 'error');
+                    }
+                }
+            }
+
+            showNotification(message, type) {
+                const notification = document.createElement('div');
+                notification.className = `fixed top-4 right-4 p-4 rounded-md text-white z-50 ${
+                    type === 'success' ? 'bg-green-500' : 'bg-red-500'
+                }`;
+                notification.textContent = message;
+                
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    if (document.body.contains(notification)) {
+                        document.body.removeChild(notification);
+                    }
+                }, 3000);
+            }
+        }
+
+        // Initialize services and router
+        const authService = new AuthService();
+        const apiService = new ApiService();
+        const router = new SimpleRouter();
+        
+        console.log('Sistema de Gestión inicializado con API real');
+    </script>
+</body>
+</html>

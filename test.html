@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test - Sistema de Gestión</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./assets/css/styles.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="app">
+        <div class="min-h-screen flex items-center justify-center">
+            <div class="text-center">
+                <h1 class="text-2xl font-bold mb-4">Sistema de Gestión</h1>
+                <p class="mb-4">Cargando aplicación...</p>
+                <div class="spinner mx-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Test basic functionality
+        console.log('Test page loaded');
+        
+        // Test API URL
+        const API_URL = '/api';
+        console.log('API URL:', API_URL);
+        
+        // Test auth service
+        class AuthService {
+            constructor() {
+                this.API_URL = '/api';
+            }
+            
+            isAuthenticated() {
+                return !!localStorage.getItem('token');
+            }
+            
+            logout() {
+                localStorage.removeItem('token');
+                localStorage.removeItem('refreshToken');
+            }
+        }
+        
+        const authService = new AuthService();
+        console.log('Auth service initialized');
+        console.log('Is authenticated:', authService.isAuthenticated());
+        
+        // Simple login page
+        function showLogin() {
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-screen flex items-center justify-center bg-gray-50">
+                    <div class="max-w-md w-full space-y-8">
+                        <div class="text-center">
+                            <h2 class="text-3xl font-bold text-gray-900">Login</h2>
+                        </div>
+                        <form class="mt-8 space-y-6">
+                            <div>
+                                <input type="email" placeholder="Email" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                            </div>
+                            <div>
+                                <input type="password" placeholder="Password" class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                            </div>
+                            <div>
+                                <button type="button" onclick="showDashboard()" class="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                    Login
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Simple dashboard
+        function showDashboard() {
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-screen bg-gray-100">
+                    <nav class="bg-white shadow-lg">
+                        <div class="max-w-7xl mx-auto px-4">
+                            <div class="flex justify-between h-16">
+                                <div class="flex items-center">
+                                    <h1 class="text-xl font-semibold text-gray-900">Sistema de Gestión</h1>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <button onclick="showLogin()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                        Logout
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </nav>
+                    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+                        <div class="px-4 py-8">
+                            <div class="max-w-4xl mx-auto">
+                                <h1 class="text-3xl font-bold text-gray-900 mb-8">Pantalla Principal</h1>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div class="bg-white rounded-lg shadow-md p-6">
+                                        <h2 class="text-xl font-semibold text-gray-900 mb-4">Gestión de Usuarios</h2>
+                                        <p class="text-gray-600 mb-4">Administra los usuarios del sistema</p>
+                                        <button class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                            CRUD de Usuarios
+                                        </button>
+                                    </div>
+
+                                    <div class="bg-white rounded-lg shadow-md p-6">
+                                        <h2 class="text-xl font-semibold text-gray-900 mb-4">Gestión de Privilegios</h2>
+                                        <p class="text-gray-600 mb-4">Administra los privilegios del sistema</p>
+                                        <button class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                            CRUD de Privilegios
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            `;
+        }
+        
+        // Start with login
+        setTimeout(() => {
+            showLogin();
+        }, 1000);
+    </script>
+</body>
+</html>
