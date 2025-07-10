@@ -10,7 +10,7 @@ app.use(express.static(path.join(__dirname)));
 
 // Proxy API requests
 app.use('/api', createProxyMiddleware({
-  target: 'http://localhost:5188',
+  target: 'https://localhost:7048',
   changeOrigin: true,
   pathRewrite: {
     '^/api': '/api'
@@ -28,5 +28,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Proxying API requests to http://localhost:5188`);
+  console.log(`Proxying API requests to https://localhost:7048`);
 });
