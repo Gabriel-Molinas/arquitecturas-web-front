@@ -50,6 +50,28 @@ arquitecturas-web-front(simple)/
 
 ## 🛠 Configuración y Uso
 
+### Configuración Inicial
+
+1. **Instalar dependencias**:
+   ```bash
+   npm install
+   ```
+
+2. **Configurar variables de entorno**:
+
+3. **Editar archivo `.env`** según tu configuración:
+   ```bash
+   # API Configuration
+   API_URL=https://localhost:7048
+   API_BASE_URL=https://localhost:7048/api
+   
+   # Server Configuration  
+   PORT=3000
+   
+   # Environment
+   NODE_ENV=development
+   ```
+
 ### Opción 1: Servidor Node.js con Proxy (Recomendado)
 
 ```bash
@@ -59,8 +81,8 @@ npm install
 # 2. Ejecutar servidor de desarrollo
 npm start
 
-# 3. Acceder a la aplicación
-# http://localhost:3000
+# 2. Acceder a la aplicación
+# http://localhost:3000 (o el puerto configurado en .env)
 ```
 
 ### Opción 2: Servidor HTTP Simple

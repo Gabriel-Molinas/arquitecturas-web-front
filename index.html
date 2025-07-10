@@ -6,6 +6,7 @@
     <title>Sistema de Gestión</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="./config.js"></script>
     <link rel="stylesheet" href="./assets/css/styles.css">
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -17,7 +18,7 @@
         // Authentication Service
         class AuthService {
             constructor() {
-                this.API_URL = 'https://localhost:7048/api';
+                this.API_URL = window.CONFIG?.API_URL || 'https://localhost:7048/api';
             }
 
             async login(credentials) {
@@ -148,7 +149,7 @@
         // API Service
         class ApiService {
             constructor() {
-                this.API_URL = 'https://localhost:7048/api';
+                this.API_URL = window.CONFIG?.API_URL || 'https://localhost:7048/api';
             }
 
             async request(url, options = {}) {
