@@ -139,6 +139,7 @@ function renderLogin() {
                     if (response.refreshToken) {
                         authService.setRefreshToken(response.refreshToken);
                     }
+                    // Add small delay to ensure token is saved before navigation
                     router.navigate('#/dashboard');
                 }
             }
