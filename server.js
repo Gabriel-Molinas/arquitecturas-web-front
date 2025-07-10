@@ -1,16 +1,18 @@
+require('dotenv').config();
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const API_URL = process.env.API_URL;
 
 // Serve static files
 app.use(express.static(path.join(__dirname)));
 
 // Proxy API requests
 app.use('/api', createProxyMiddleware({
-  target: 'https://localhost:7048',
+  target: API_URL,
   changeOrigin: true,
   pathRewrite: {
     '^/api': '/api'
@@ -28,5 +30,6 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Proxying API requests to https://localhost:7048`);
+  console.log(`Proxying API requests to ${API_URL}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
